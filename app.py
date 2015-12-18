@@ -21,20 +21,60 @@ class StgkStarterApp(Application):
         """
         Called as the application is being initialized
         """
-
         # first, we use the special import_module command to access the app module
         # that resides inside the python folder in the app. This is where the actual UI
         # and business logic of the app is kept. By using the import_module command,
         # toolkit's code reload mechanism will work properly.
         app_payload = self.import_module("app")
 
-        # now register a *command*, which is normally a menu entry of some kind on a Shotgun
-        # menu (but it depends on the engine). The engine will manage this command and
-        # whenever the user requests the command, it will call out to the callback.
+        # now register a panel, this is to tell the engine about the our panel ui 
+        # that the engine can automatically create the panel - this happens for
+        # example when a saved window layout is restored in Nuke or at startup.
+        self._unique_panel_id = self.engine.register_panel(self.create_panel)
+        
+        # keep track of the last dialog we have created
+        # in order to support the DIALOG mode for the navigate() method
+        self._current_dialog = None
+        
+        # also register a menu entry on the shotgun menu so that users
+        # can launch the panel
+        self.engine.register_command("Shotgun Chat...", 
+                                     self.create_panel, 
+                                     {"type": "panel", 
+                                      "short_name": "shotgun_chat"})
 
-        # first, set up our callback, calling out to a method inside the app module contained
-        # in the python folder of the app
-        menu_callback = lambda : app_payload.dialog.show_dialog(self)
+    def create_dialog(self):
+        """
+        Shows the panel as a dialog.
+        
+        Contrary to the create_panel() method, multiple calls
+        to this method will result in multiple windows appearing. 
+        
+        :returns: The widget associated with the dialog. 
+        """
+        app_payload = self.import_module("app")
+        widget = self.engine.show_dialog("Chat", self, app_payload.AppDialog)
+        self._current_dialog = widget
+        return widget
 
-        # now register the command with the engine
-        self.engine.register_command("Show Starter Template App...", menu_callback)
+    def create_panel(self):
+        """
+        Shows the UI as a panel. 
+        Note that since panels are singletons by nature,
+        calling this more than once will only result in one panel.
+        
+        :returns: The widget associated with the panel.
+        """
+        app_payload = self.import_module("app")
+        
+        # start the UI
+        try:
+            widget = self.engine.show_panel(self._unique_panel_id, "Chat", self, app_payload.AppDialog)
+        except AttributeError, e:
+            # just to gracefully handle older engines and older cores
+            self.log_warning("Could not execute show_panel method - please upgrade "
+                             "to latest core and engine! Falling back on show_dialog. "
+                             "Error: %s" % e)
+            widget = self.create_dialog()
+            
+        return widget
